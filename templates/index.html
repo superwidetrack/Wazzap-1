@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wazzap Assistant Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+        #messageLog { border: 1px solid #ccc; height: 400px; overflow-y: scroll; padding: 10px; margin-bottom: 20px; }
+        .message { margin-bottom: 10px; }
+        .client { color: blue; }
+        .assistant { color: green; }
+    </style>
+</head>
+<body>
+    <h1>Wazzap Assistant Dashboard</h1>
+    <div id="messageLog"></div>
+    <button onclick="fetchMessages()">Обновить сообщения</button>
+
+    <script>
+        function fetchMessages() {
+            fetch('/get_messages')
+                .then(response => response.json())
+                .then(data => {
+                    const messageLog = document.getElementById('messageLog');
+                    messageLog.innerHTML = '';
+                    data.messages.forEach(msg => {
+                        const messageDiv = document.createElement('div');
+                        messageDiv.className = `message ${msg.is_from_client ? 'client' : 'assistant'}`;
+                        messageDiv.textContent = `${msg.timestamp}: ${msg.content}`;
+                        messageLog.appendChild(messageDiv);
+                    });
+                })
+                .catch(error => console.error('Error:', error));
+        }
+
+        // Обновляем сообщения каждые 5 секунд
+        setInterval(fetchMessages, 5000);
+        // Загружаем сообщения при загрузке страницы
+        fetchMessages();
+    </script>
+</body>
+</html>
