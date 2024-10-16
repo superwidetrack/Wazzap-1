@@ -16,26 +16,28 @@ def is_text_file(file_path):
         return False
     return mime_type.startswith('text')
 
-def generate_directory_structure(project_dir, exclude_dirs=None, exclude_files=None):
+def get_file_permissions(file_path):
+    """Возвращает строковое представление прав доступа к файлу."""
+    st = os.stat(file_path)
+    mode = st.st_mode
+    permissions = []
+    for who in ['USR', 'GRP', 'OTH']:
+        for what in ['R', 'W', 'X']:
+            if mode & getattr(stat, f'S_I{what}{who}'):
+                permissions.append(what.lower())
+            else:
+                permissions.append('-')
+    return ''.join(permissions)
+
+def generate_folder_description(folder_path):
     """
-    Генерирует структуру директорий и файлов в формате Markdown.
-    Исключает указанные директории и файлы.
+    Генерирует описание папки.
+    В текущей реализации описание автоматически создается на основе имени папки.
+    При необходимости можно расширить функциональность для более детальных описаний.
     """
-    lines = []
-    for root, dirs, files in os.walk(project_dir):
-        # Исключаем только директории из списка exclude_dirs
-        dirs[:] = [d for d in dirs if d not in exclude_dirs]
-        level = len(Path(root).relative_to(project_dir).parts)
-        indent = '    ' * level
-        folder_name = Path(root).name
-        lines.append(f"{indent}- **{folder_name}/**")
-        sub_indent = '    ' * (level + 1)
-        for f in sorted(files):
-            if f not in exclude_files:
-                file_path = Path(root) / f
-                if not file_path.is_symlink():
-                    lines.append(f"{sub_indent}- {f}")
-    return '\n'.join(lines)
+    # Пример простого описания. Можно доработать для более информативных описаний.
+    description = f"**{folder_path.name}/** - Описание папки не предоставлено."
+    return description
 
 def generate_file_content(file_path, max_file_size=100000):
     """Генерирует содержимое файла в формате Markdown."""
@@ -77,26 +79,11 @@ def generate_file_content(file_path, max_file_size=100000):
     except Exception as e:
         return f"**Ошибка при чтении файла:** {str(e)}\n\n"
 
-def get_file_permissions(file_path):
-    """Возвращает строковое представление прав доступа к файлу."""
-    st = os.stat(file_path)
-    mode = st.st_mode
-    permissions = []
-    for who in ['USR', 'GRP', 'OTH']:
-        for what in ['R', 'W', 'X']:
-            if mode & getattr(stat, f'S_I{what}{who}'):
-                permissions.append(what.lower())
-            else:
-                permissions.append('-')
-    return ''.join(permissions)
-
-def generate_markdown(project_dir, output_file, max_file_size=100000, extensions=None, include_files=None, exclude_dirs=None, exclude_files=None):
-    if extensions is None:
-        extensions = ['.py', '.js', '.html', '.css', '.json', '.md']
-    if include_files is None:
-        include_files = ['.env', '.gitignore', 'Dockerfile', 'Makefile']
+def generate_markdown_recursive(project_dir, output_file, main_files=None, exclude_dirs=None, exclude_files=None, max_file_size=100000):
+    if main_files is None:
+        main_files = ['README.md', 'main.py', 'app.py', 'index.js', 'Dockerfile', 'Makefile']
     if exclude_dirs is None:
-        exclude_dirs = ['__pycache__', 'venv', '.venv', 'node_modules', 'pypoetry', 'replit']  # Добавлено 'replit'
+        exclude_dirs = ['__pycache__', 'venv', '.venv', 'node_modules', 'pypoetry', 'replit']
     if exclude_files is None:
         exclude_files = ['PROJECT_OVERVIEW.md']
 
@@ -105,54 +92,35 @@ def generate_markdown(project_dir, output_file, max_file_size=100000, extensions
     try:
         with open(output_file, 'w', encoding='utf-8') as md:
             md.write(f"# Обзор проекта: `{project_dir.name}`\n\n")
-            md.write("## Структура проекта\n\n")
-            directory_structure = generate_directory_structure(project_dir, exclude_dirs, exclude_files)
-            md.write(f"```\n{directory_structure}\n```\n\n")
 
-            md.write("## Содержимое файлов\n\n")
+            # Рекурсивный обход всех папок
             for root, dirs, files in os.walk(project_dir):
+                # Исключаем директории
                 dirs[:] = [d for d in dirs if d not in exclude_dirs]
+                current_path = Path(root)
+                relative_path = current_path.relative_to(project_dir)
+                indent_level = len(relative_path.parts)
+                indent = '    ' * indent_level
+                folder_name = current_path.name
+                md.write(f"{indent}- **{folder_name}/**\n")
+
+                # Добавление описания папки
+                description = generate_folder_description(current_path)
+                md.write(f"{indent}    {description}\n")
+
+                # Обработка файлов в текущей папке
                 for file in sorted(files):
-                    if file not in exclude_files:
-                        file_path = Path(root) / file
-                        if file_path.suffix in extensions or file_path.name in include_files:
-                            relative_path = file_path.relative_to(project_dir)
-                            md.write(f"### `{relative_path}`\n\n")
-                            file_size = file_path.stat().st_size
-                            md.write(f"Размер файла: {file_size} байт\n\n")
-                            md.write(f"MIME-тип: {mimetypes.guess_type(file_path)[0]}\n\n")
-                            md.write(f"Права доступа: {get_file_permissions(file_path)}\n\n")
-                            md.write(generate_file_content(file_path, max_file_size))
+                    if file in exclude_files:
+                        continue
+                    file_path = current_path / file
+                    if not file_path.is_symlink():
+                        md.write(f"{indent}    - `{file}`\n")
 
-        logging.warning(f"Markdown-файл с обзором проекта создан: {output_file}")
-    except Exception as e:
-        logging.error(f"Ошибка при открытии файла для записи: {e}")
+                        # Проверяем, является ли файл основным
+                        if file_path.suffix in [Path(f).suffix for f in main_files] or file_path.name in main_files:
+                            relative_file_path = file_path.relative_to(project_dir)
+                            md.write(f"\n{indent}    ### `{relative_file_path}`\n\n")
+                            try:
+                                file_size = file_path.stat().st_size
+                            except Exception as e:
 
-if __name__ == "__main__":
-    logging.basicConfig(
-        filename='generate_project_overview.log',
-        level=logging.WARNING,  # Изменено с INFO на WARNING
-        format='%(asctime)s - %(levelname)s - %(message)s'
-    )
-
-    parser = argparse.ArgumentParser(description="Генерация обзора проекта в Markdown.")
-    parser.add_argument('--project_dir', type=str, default=str(Path(__file__).parent.resolve()), help='Путь к директории проекта.')
-    parser.add_argument('--output_file', type=str, default='PROJECT_OVERVIEW.md', help='Имя выходного Markdown-файла.')
-    parser.add_argument('--max_file_size', type=int, default=100000, help='Максимальный размер файла в байтах для отображения.')
-    parser.add_argument('--extensions', type=str, nargs='+', default=['.py', '.js', '.html', '.css', '.json', '.md'], help='Список расширений файлов для обработки.')
-    parser.add_argument('--include_files', type=str, nargs='+', default=['.env', '.gitignore', 'Dockerfile', 'Makefile'], help='Список файлов для включения независимо от расширения.')
-    parser.add_argument('--exclude_dirs', type=str, nargs='+', default=['__pycache__', 'venv', '.venv', 'node_modules', 'pypoetry', 'replit'], help='Список директорий для исключения из обхода.')  # Добавлено 'replit'
-    parser.add_argument('--exclude_files', type=str, nargs='+', default=['PROJECT_OVERVIEW.md'], help='Список файлов для исключения из обработки.')
-    args = parser.parse_args()
-
-    project_directory = Path(args.project_dir).resolve()
-    output_markdown = project_directory / args.output_file
-    generate_markdown(
-        project_dir=project_directory,
-        output_file=output_markdown,
-        max_file_size=args.max_file_size,
-        extensions=args.extensions,
-        include_files=args.include_files,
-        exclude_dirs=args.exclude_dirs,
-        exclude_files=args.exclude_files
-    )

@@ -1,7 +1,7 @@
     import requests
     import json
 
-    url = "https://wazzap.superwidetrack.repl.co/wazzup/webhook"
+    url = "https://wazzup.superwidetrack.repl.co/wazzup/webhook"
     payload = {
       "messages": [
         {
